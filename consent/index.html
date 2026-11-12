@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      The bank-consent bounce page (ADR 0003). Enable Banking redirects here
+      after the User approves access at their Institution, because a redirect
+      straight into ingress fails. Each release publishes it to the GitHub
+      Pages of tim-pankoke/ha-apps, where it is
+      https://tim-pankoke.github.io/ha-apps/consent/, the only redirect_url
+      Enable Banking knows (docs/setup.md) and the one the app sends
+      (app.BouncePageURL). make dev serves it at /bounce/.
+
+      In:  ?code=…&state=…, or ?error=…&error_description=…&state=…
+           state is base64url-encoded JSON {"nonce", "origin", "slug"}: the
+           origin of Home Assistant exactly as location.origin gives it, and the
+           installed app slug, such as a1b2c3d4_finance.
+      Out: links, followed only when tapped, to
+             homeassistant://navigate/app/<slug>?eb_code=…&eb_state=…
+             <origin>/app/<slug>?eb_code=…&eb_state=…
+           Home Assistant's login drops code and state from the URL, hence the
+           eb_ names. eb_state is the state unchanged, so Finanzen can check its
+           nonce. The links open the panel root on purpose: the panel iframe
+           ignores the path and query of the panel URL, and Finanzen routes in
+           its hash, so Finanzen reads eb_code from the parent frame's URL on
+           whichever screen it starts.
+
+      The code is for Finanzen only. The page loads nothing and sends nothing:
+      its script and styles are inline, so the policy below forbids every
+      request. Links still navigate.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Finanzen: Freigabe</title>
+    <style>
+      /* Copied verbatim from the theme tokens in web/src/index.css, which this
+         page cannot load. Change both together. */
+      :root {
+        --background: oklch(1 0 0);
+        --foreground: oklch(0.145 0 0);
+        --muted-foreground: oklch(0.556 0 0);
+        --border: oklch(0.922 0 0);
+        --secondary: oklch(0.97 0 0);
+        --primary: oklch(0.55 0.15 250);
+        --primary-foreground: oklch(0.985 0 0);
+        --destructive: oklch(0.577 0.245 27.325);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: oklch(0.145 0 0);
+          --foreground: oklch(0.985 0 0);
+          --muted-foreground: oklch(0.708 0 0);
+          --border: oklch(1 0 0 / 10%);
+          --secondary: oklch(0.269 0 0);
+          --primary: oklch(0.72 0.13 250);
+          --primary-foreground: oklch(0.205 0 0);
+          --destructive: oklch(0.704 0.191 22.216);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--foreground);
+        font:
+          16px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+      main {
+        max-width: 28rem;
+        margin: 0 auto;
+        padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+          max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      }
+      h1 {
+        margin: 0 0 16px;
+        font-size: 1.5rem;
+      }
+      h2 {
+        margin: 32px 0 8px;
+        font-size: 1.125rem;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      .muted {
+        color: var(--muted-foreground);
+      }
+      .button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: 48px;
+        margin: 0 0 12px;
+        padding: 12px 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--secondary);
+        color: var(--foreground);
+        font: inherit;
+        font-weight: 600;
+        text-align: center;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .button.primary {
+        border-color: var(--primary);
+        background: var(--primary);
+        color: var(--primary-foreground);
+      }
+      .code {
+        display: block;
+        margin: 0 0 12px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        font:
+          0.9375rem/1.4 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        overflow-wrap: anywhere;
+        user-select: all;
+        -webkit-user-select: all;
+      }
+      #failure h2 {
+        margin-top: 0;
+        color: var(--destructive);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Freigabe</h1>
+      <noscript><p>Diese Seite braucht JavaScript.</p></noscript>
+
+      <section id="forward" hidden>
+        <p>Der Zugriff ist freigegeben. Öffne jetzt Finanzen, um die Verbindung abzuschließen.</p>
+        <a id="companion" class="button primary">In der Home Assistant App öffnen</a>
+        <a id="browser" class="button">Im Browser öffnen</a>
+
+        <h2>Klappt das nicht?</h2>
+        <p>Kopiere den Code und füge ihn in Finanzen unter Verbindungen ein.</p>
+        <code id="code" class="code"></code>
+        <button id="copy" class="button" type="button">Code kopieren</button>
+        <p id="copy-status" class="muted" role="status"></p>
+      </section>
+
+      <section id="failure" role="alert" hidden>
+        <h2 id="failure-title"></h2>
+        <p id="failure-detail"></p>
+        <p class="muted">Starte die Verbindung in Finanzen unter Verbindungen neu.</p>
+      </section>
+    </main>
+
+    <script>
+      // panelOf reads from state where Finanzen runs: the origin of Home
+      // Assistant and the app slug. It returns null unless the origin is a bare
+      // http(s) origin and the slug a plain slug, so a link never leaves the
+      // path /app/<slug> of an http(s) origin.
+      function panelOf(state) {
+        let fields
+        try {
+          const bytes = Uint8Array.from(atob(state.replace(/-/g, '+').replace(/_/g, '/')), (c) =>
+            c.charCodeAt(0),
+          )
+          fields = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+        } catch {
+          return null
+        }
+        const { origin, slug } = fields ?? {}
+        if (typeof origin !== 'string' || typeof slug !== 'string') return null
+        if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slug)) return null
+        let url
+        try {
+          url = new URL(origin)
+        } catch {
+          return null
+        }
+        if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+        // Rejects a path, query, user info or a non-canonical spelling.
+        if (url.origin !== origin) return null
+        return { origin, slug }
+      }
+
+      // fail shows why there is no way forward. Text from the URL goes in as
+      // text only, never as markup.
+      function fail(title, detail) {
+        document.getElementById('failure-title').textContent = title
+        document.getElementById('failure-detail').textContent = detail
+        document.getElementById('failure').hidden = false
+      }
+
+      function offerForwarding(code, state, panel) {
+        const query = new URLSearchParams({ eb_code: code, eb_state: state })
+        const path = `app/${panel.slug}?${query}`
+        document.getElementById('companion').href = `homeassistant://navigate/${path}`
+        document.getElementById('browser').href = `${panel.origin}/${path}`
+
+        const codeBox = document.getElementById('code')
+        codeBox.textContent = code
+        document.getElementById('copy').addEventListener('click', async () => {
+          const status = document.getElementById('copy-status')
+          try {
+            await navigator.clipboard.writeText(code)
+            status.textContent = 'Code kopiert.'
+          } catch {
+            getSelection().selectAllChildren(codeBox)
+            status.textContent = 'Kopieren ging nicht. Der Code ist markiert, kopiere ihn von Hand.'
+          }
+        })
+
+        document.getElementById('forward').hidden = false
+      }
+
+      const params = new URLSearchParams(location.search)
+      const error = params.get('error')
+      const code = params.get('code')
+      const state = params.get('state')
+      const panel = code && state && panelOf(state)
+      if (error) {
+        fail('Der Zugriff wurde nicht freigegeben.', params.get('error_description') || error)
+      } else if (!panel) {
+        fail(
+          'Dieser Link ist ungültig.',
+          'Ihm fehlt der Freigabecode oder ein gültiges Ziel in Home Assistant.',
+        )
+      } else {
+        offerForwarding(code, state, panel)
+      }
+    </script>
+  </body>
+</html>
