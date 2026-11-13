@@ -4,7 +4,7 @@
 # Linted by frenck/action-app-linter, which rejects keys that state a default:
 # ingress_port is 8099 and init is true by omission.
 name: Finanzen
-version: "0.1.0"
+version: "0.2.0"
 slug: finance
 description: Bank-Umsätze über Enable Banking abrufen und mit Claude kategorisieren.
 arch:
@@ -21,9 +21,11 @@ options:
   anthropic_api_key: ""
   claude_model: claude-opus-5-5
   notify_service: ""
+  log_level: info
 schema:
   enable_banking_application_id: str?
   enable_banking_private_key: password?
   anthropic_api_key: password?
   claude_model: str
   notify_service: str?
+  log_level: list(debug|info|warning|error)?
