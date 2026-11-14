@@ -4,7 +4,7 @@
 # Linted by frenck/action-app-linter, which rejects keys that state a default:
 # ingress_port is 8099 and init is true by omission.
 name: Finanzen
-version: "0.3.0"
+version: "0.4.0"
 slug: finance
 description: Bank-Umsätze über Enable Banking abrufen und mit Claude kategorisieren.
 arch:
